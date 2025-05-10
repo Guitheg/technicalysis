@@ -29,6 +29,15 @@ jobs:
 
     - name: Clippy clippy
       run: cargo clippy --tests --no-deps -- -D warnings
+    
+    - name: Create python venv
+      run: python -m venv .venv --prompt technicalysis && source .venv/bin/activate
+
+    - name: Add python requirements
+      run: pip install -r requirements-dev.txt
+    
+    - name: Build python package with maturin
+      run: maturin develop --release
 
     - name: Run unit & property tests
       run: cargo test --verbose
@@ -49,3 +58,6 @@ jobs:
         chmod +x fuzz/run_all.sh
         cargo +nightly --version
         bash fuzz/run_all.sh
+    
+    - name: Build 
+      run: pytest
