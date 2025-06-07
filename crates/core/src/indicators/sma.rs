@@ -42,7 +42,7 @@ pub fn sma_into(
     output: &mut [f64],
 ) -> Result<SmaState, TechalysisError> {
     let size = data_array.len();
-    let period_as_f64 = period as f64;
+    let inv_period = 1.0 / (period as f64);
     if period == 0 || period > size {
         return Err(TechalysisError::InsufficientData);
     }
@@ -53,17 +53,13 @@ pub fn sma_into(
         ));
     }
 
-    let mut running_sum: f64 = 0.0;
-    for idx in 0..period {
-        let value = &data_array[idx];
-        if value.is_nan() {
-            return Err(TechalysisError::UnexpectedNan);
-        } else {
-            running_sum += value;
-        }
-        output[idx] = f64::NAN;
+    if output.len() < size {
+        return Err(TechalysisError::BadParam(
+            "Output array must be at least as long as the input data array".to_string(),
+        ));
     }
-    output[period - 1] = running_sum / period_as_f64;
+
+    init_sma_unchecked(data_array, period, inv_period, output)?;
 
     for idx in period..size {
         if data_array[idx].is_nan() {
@@ -73,7 +69,7 @@ pub fn sma_into(
             data_array[idx],
             data_array[idx - period],
             output[idx - 1],
-            period_as_f64,
+            inv_period,
         );
     }
     Ok(SmaState {
@@ -89,7 +85,7 @@ pub fn sma_next(
     window: &VecDeque<f64>,
     period: usize,
 ) -> Result<SmaState, TechalysisError> {
-    if period < 1 {
+    if period <= 1 {
         return Err(TechalysisError::BadParam(
             "SMA period must be greater than 1".to_string(),
         ));
@@ -119,13 +115,34 @@ pub fn sma_next(
     window.push_back(new_value);
 
     Ok(SmaState {
-        sma: sma_next_unchecked(new_value, old_value, prev_sma, period as f64),
+        sma: sma_next_unchecked(new_value, old_value, prev_sma, 1.0 / (period as f64)),
         period,
         window,
     })
 }
 
 #[inline(always)]
-pub fn sma_next_unchecked(new_value: f64, old_value: f64, prev_sma: f64, period: f64) -> f64 {
-    prev_sma + (new_value - old_value) / period
+pub fn sma_next_unchecked(new_value: f64, old_value: f64, prev_sma: f64, inv_period: f64) -> f64 {
+    prev_sma + (new_value - old_value) * inv_period
+}
+
+#[inline(always)]
+pub(crate) fn init_sma_unchecked(
+    data_array: &[f64],
+    period: usize,
+    inv_period: f64,
+    output: &mut [f64],
+) -> Result<f64, TechalysisError> {
+    let mut sum: f64 = 0.0;
+    for idx in 0..period {
+        let value = &data_array[idx];
+        if value.is_nan() {
+            return Err(TechalysisError::UnexpectedNan);
+        } else {
+            sum += value;
+        }
+        output[idx] = f64::NAN;
+    }
+    output[period - 1] = sum * inv_period;
+    Ok(sum)
 }
